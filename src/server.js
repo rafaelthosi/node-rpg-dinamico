@@ -1,10 +1,13 @@
 import { createApp } from "./app.js";
 import { config } from "./config/env.js";
-import { CsvRpgRepository } from "./repositories/CsvRpgRepository.js";
+import { CsvRpgRepository } from "./repositories/csv/CsvRpgRepository.js";
+import { PostgresRpgRepository } from "./repositories/postgres/PostgresRpgRepository.js";
 import { AuthService } from "./services/authService.js";
 import { RpgService } from "./services/rpgService.js";
 
-const repository = new CsvRpgRepository(config.csvDatabasePath, config.legacyExcelDatabasePath);
+const repository = config.storageDriver === "postgres"
+  ? new PostgresRpgRepository(config.databaseUrl)
+  : new CsvRpgRepository(config.csvDatabasePath, config.legacyExcelDatabasePath);
 await repository.initialize();
 
 const authService = new AuthService({

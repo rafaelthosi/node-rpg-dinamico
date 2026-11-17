@@ -1,8 +1,9 @@
 # API RPG Dinâmico
 
 API realizada para aprender a integração de uma aplicação React com Node.js.
-Ela guarda os dados em arquivos CSV e oferece autenticação por usuário e senha
-e token JWT.
+Ela pode guardar os dados em arquivos CSV, importar uma planilha Excel antiga
+ou utilizar um banco PostgreSQL, além de oferecer autenticação por usuário e
+senha e token JWT.
 
 ## Como funciona?
 
@@ -65,14 +66,41 @@ As principais variáveis de ambiente são:
 ```text
 PORT=3000
 JWT_SECRET=
+STORAGE_DRIVER=csv
+DATABASE_URL=
 CORS_ORIGIN=http://localhost:5173
-CSV_DATABASE_PATH=./data
+CSV_DATABASE_PATH=./data/csv
 LEGACY_EXCEL_DATABASE_PATH=./data/users.xlsx
 ```
 
 Quando `JWT_SECRET` não estiver definido, o backend usa o segredo salvo em
-`data/jwt.secret`. Os dados são criados e atualizados nos arquivos CSV dentro
-de `data/`.
+`data/jwt.secret`. Para manter a persistência local em CSV, deixe
+`STORAGE_DRIVER=csv`; os arquivos ficam em `data/csv/`. Se existir uma planilha
+antiga em Excel, o backend pode importá-la usando o caminho definido em
+`LEGACY_EXCEL_DATABASE_PATH`.
+
+### Usar PostgreSQL no Neon
+
+No painel do Neon, copie a connection string do projeto e cole o valor em
+`DATABASE_URL` no arquivo `backend/.env`, sem aspas:
+
+```text
+STORAGE_DRIVER=postgres
+DATABASE_URL=postgresql://usuario:senha@host/banco?sslmode=require
+```
+
+Para conectar a API hospedada, abra o serviço do backend no Render, entre em
+**Environment** e adicione `STORAGE_DRIVER` com o valor `postgres` e
+`DATABASE_URL` com a connection string do Neon. Salve as alterações e faça o
+deploy. Configure também `CORS_ORIGIN` com a URL publicada do frontend.
+
+Não publique nem envie esse arquivo para o Git. Ao iniciar, a API conecta ao
+banco e aplica a migração inicial automaticamente. Os dados existentes em CSV
+ou Excel não são copiados para o PostgreSQL; importe-os separadamente se
+precisar preservá-los.
+
+`CORS_ORIGIN` aceita uma ou mais origens separadas por vírgula. Ao hospedar o
+frontend, inclua aqui a URL dele para permitir as chamadas à API.
 
 ## Executar
 
@@ -126,11 +154,13 @@ npm test
 src/
 ├── config/           # Configuração do ambiente e JWT
 ├── middleware/       # Funções intermediárias da API
-├── repositories/     # Persistência dos dados em CSV
+├── repositories/
+│   ├── csv/          # Persistência local em CSV e importação de Excel
+│   └── postgres/     # Conexão, repositórios e migrações PostgreSQL
 ├── routes/           # Rotas HTTP
 ├── services/         # Regras de autenticação e RPG
 ├── app.js            # Configuração do Express
 └── server.js         # Inicialização da API
-data/                 # Arquivos CSV utilizados pela aplicação
+data/csv/             # Arquivos CSV utilizados pela aplicação
 testes http/          # Exemplos de chamadas HTTP
 ```

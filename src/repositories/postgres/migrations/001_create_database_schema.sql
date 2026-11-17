@@ -1,7 +1,3 @@
-BEGIN;
-
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username VARCHAR(255) NOT NULL UNIQUE,
@@ -108,5 +104,3 @@ CREATE INDEX idx_characters_campaign_id ON characters(campaign_id);
 CREATE INDEX idx_characters_user_id ON characters(user_id);
 CREATE INDEX idx_field_values_character_id ON field_values(character_id);
 CREATE INDEX idx_field_values_field_id ON field_values(field_id);
-
-COMMIT;

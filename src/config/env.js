@@ -25,8 +25,21 @@ const jwtSecret = await resolveJwtSecret(
 export const config = {
   port,
   jwtSecret,
-  corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
-  csvDatabasePath: process.env.CSV_DATABASE_PATH ?? "./data",
+  corsOrigin: (process.env.CORS_ORIGIN ?? "http://localhost:5173")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+  storageDriver: process.env.STORAGE_DRIVER ?? "csv",
+  databaseUrl: process.env.DATABASE_URL?.trim(),
+  csvDatabasePath: process.env.CSV_DATABASE_PATH ?? "./data/csv",
   legacyExcelDatabasePath:
     process.env.LEGACY_EXCEL_DATABASE_PATH ?? process.env.EXCEL_DATABASE_PATH ?? "./data/users.xlsx",
 };
+
+if (!["csv", "postgres"].includes(config.storageDriver)) {
+  throw new Error("STORAGE_DRIVER deve ser csv ou postgres.");
+}
+
+if (config.storageDriver === "postgres" && !config.databaseUrl) {
+  throw new Error("DATABASE_URL é obrigatória quando STORAGE_DRIVER=postgres.");
+}

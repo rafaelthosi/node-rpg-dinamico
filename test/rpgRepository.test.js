@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
 import ExcelJS from "exceljs";
-import { CsvRpgRepository } from "../src/repositories/CsvRpgRepository.js";
+import { CsvRpgRepository } from "../src/repositories/csv/CsvRpgRepository.js";
 import { RpgService } from "../src/services/rpgService.js";
 
 let directory;
