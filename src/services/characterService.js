@@ -44,6 +44,11 @@ export class CharacterService extends RpgServiceBase {
     const character = await this.requireRecord("characters", characterId, "Personagem não encontrado.");
     await this.requireCharacterAccess(actor, character);
     await this.repository.deleteWhere("field_values", (value) => value.characterId === characterId);
+    await this.repository.deleteWhere("attacks", (attack) => attack.characterId === characterId);
+    const combatants = await this.repository.list("combatants", (item) => item.characterId === characterId);
+    for (const combatant of combatants) {
+      await this.repository.update("combatants", combatant.id, { characterId: null });
+    }
     await this.repository.delete("characters", characterId);
     return { deleted: true };
   }

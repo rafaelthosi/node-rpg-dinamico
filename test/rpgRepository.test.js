@@ -56,8 +56,10 @@ test("persiste entidades do RPG e aplica escopo de personagem/campanha", async (
   const section = await service.createSection(gmActor, campaign.id, { name: "Ficha" });
   const field = await service.createField(gmActor, section.id, {
     name: "name", label: "Nome", type: "TEXT", required: true,
-    editableBy: "PLAYER", visibleTo: "BOTH",
+    editableBy: "PLAYER", visibleTo: "BOTH", shareWithNpcs: true,
   });
+  assert.equal(field.name, "nome");
+  assert.equal(field.shareWithNpcs, true);
   const classField = await service.createField(gmActor, section.id, {
     name: "class", label: "Classe", type: "SELECT", required: true,
     editableBy: "PLAYER", visibleTo: "BOTH",
@@ -78,6 +80,70 @@ test("persiste entidades do RPG e aplica escopo de personagem/campanha", async (
     name: "Brisa", userId: player.id,
   });
   assert.equal(gmCreatedCharacter.userId, player.id);
+  const combat = await service.combats.create(gmActor, campaign.id, {
+    name: "Caverna",
+    participants: [
+      { characterId: character.id, initiative: 15, actionsPerTurn: 2 },
+      {
+        name: "Goblin",
+        isEnemy: true,
+        initiative: 9,
+        actionsPerTurn: 1,
+        fieldValues: [{ fieldId: field.id, value: "16" }],
+      },
+    ],
+  });
+  const characterCombatant = combat.combatants.find((item) => item.characterId === character.id);
+  const goblinCombatant = combat.combatants.find((item) => item.name === "Goblin");
+  assert.equal(combat.currentRound, 1);
+  assert.equal(characterCombatant.actionsPerTurn, 2);
+  assert.equal(characterCombatant.isMine, false);
+
+  const action = await service.combats.addAction(playerActor, combat.id, {
+    combatantId: characterCombatant.id,
+    description: "Ataca o goblin",
+    damage: "1d4",
+    targets: [goblinCombatant.id],
+  });
+  assert.deepEqual(
+    (await service.combats.get(playerActor, combat.id)).combatants
+      .find((item) => item.id === goblinCombatant.id).sharedFields,
+    [{ fieldId: field.id, label: "Nome", value: "16" }],
+  );
+  assert.equal(action.actions.length, 1);
+  assert.deepEqual(action.actions[0].targets.map(({ combatantId }) => combatantId), [goblinCombatant.id]);
+  await service.combats.addAction(playerActor, combat.id, {
+    combatantId: characterCombatant.id,
+    description: "Segundo golpe",
+    targets: [],
+  });
+  await assert.rejects(
+    service.combats.addAction(playerActor, combat.id, {
+      combatantId: characterCombatant.id,
+      description: "Terceiro golpe",
+      targets: [],
+    }),
+    { status: 400 },
+  );
+  await service.combats.advanceTurn(gmActor, combat.id);
+  await assert.rejects(
+    service.combats.addAction(playerActor, combat.id, {
+      combatantId: goblinCombatant.id,
+      description: "Ação de inimigo",
+      targets: [],
+    }),
+    { status: 403 },
+  );
+  const attack = await service.attacks.create(playerActor, character.id, {
+    name: "Golpe rápido",
+    description: "Um ataque simples.",
+    damage: "1d4",
+    effects: "Empurra o alvo",
+    observation: "",
+    actionsConsumed: 1,
+  });
+  assert.equal(attack.characterId, character.id);
+  assert.equal((await service.attacks.list(playerActor, character.id))[0].id, attack.id);
   await assert.rejects(
     service.createCharacter(gmActor, campaign.id, { name: "Sem vínculo", userId: unlinkedPlayer.id }),
     { status: 400 },
@@ -94,6 +160,10 @@ test("persiste entidades do RPG e aplica escopo de personagem/campanha", async (
     ),
     true,
   );
+  await service.updateField(gmActor, field.id, { position: 4 });
+  assert.equal((await repository.findById("fields", field.id)).position, 4);
+  await service.updateSection(gmActor, section.id, { position: 3 });
+  assert.equal((await repository.findById("sections", section.id)).position, 3);
   assert.equal((await service.joinCampaign(
     { id: unlinkedPlayer.id, role: "player" }, campaign.id, "senha-campanha",
   )).status,
@@ -170,12 +240,23 @@ test("importa dados de uma planilha Excel antiga para arquivos CSV", async () =>
   const campaigns = workbook.addWorksheet("campaigns");
   campaigns.addRow(["id", "name", "description", "gmId", "passwordHash", "createdAt"]);
   campaigns.addRow(["campaign-1", "Aventura antiga", "", "user-1", "campaign-hash", "2026-01-01"]);
+  const fields = workbook.addWorksheet("fields");
+  fields.addRow([
+    "id", "sectionId", "name", "label", "type", "required",
+    "editableBy", "visibleTo", "position", "createdAt",
+  ]);
+  fields.addRow([
+    "field-1", "section-1", "vitalidade", "Vitalidade", "NUMBER", false,
+    "BOTH", "BOTH", 0, "2026-01-01",
+  ]);
   await workbook.xlsx.writeFile(legacyPath);
 
   const repository = new CsvRpgRepository(path.join(fixtureDirectory, "csv"), legacyPath);
   await repository.initialize();
   assert.equal((await repository.findByUsername("mestre-antigo")).id, "user-1");
   assert.equal((await repository.findById("campaigns", "campaign-1")).name, "Aventura antiga");
+  const importedField = await repository.findById("fields", "field-1");
+  assert.equal(importedField.shareWithNpcs, false);
   assert.match(
     await readFile(path.join(fixtureDirectory, "csv", "campaigns.csv"), "utf8"),
     /^id,name,description,gm_id,password_hash,created_at\r\n/,

@@ -15,6 +15,12 @@ export class RpgServiceBase {
       fieldOptions: repository.fieldOptions ?? repository,
       characters: repository.characters ?? repository,
       fieldValues: repository.fieldValues ?? repository,
+      combats: repository.combats ?? repository,
+      combatants: repository.combatants ?? repository,
+      combatActions: repository.combatActions ?? repository,
+      combatActionTargets: repository.combatActionTargets ?? repository,
+      combatantFieldValues: repository.combatantFieldValues ?? repository,
+      attacks: repository.attacks ?? repository,
       fallback: repository,
     };
     this.repository = {
@@ -82,6 +88,12 @@ export class RpgServiceBase {
       field_options: this.repositories.fieldOptions,
       characters: this.repositories.characters,
       field_values: this.repositories.fieldValues,
+      combats: this.repositories.combats,
+      combatants: this.repositories.combatants,
+      combat_actions: this.repositories.combatActions,
+      combat_action_targets: this.repositories.combatActionTargets,
+      combatant_field_values: this.repositories.combatantFieldValues,
+      attacks: this.repositories.attacks,
     };
     const repository = repositories[table];
     if (!repository) {
@@ -140,13 +152,14 @@ export class RpgServiceBase {
     const fieldTypes = new Set(["TEXT", "NUMBER", "TEXTAREA", "SELECT", "CHECKBOX", "BOOLEAN", "DATE"]);
     const permissions = new Set(["GM", "PLAYER", "BOTH"]);
     const value = (key, fallback) => Object.hasOwn(input, key) ? input[key] : fallback;
-    const name = value("name", existing?.name);
     const label = value("label", existing?.label);
+    const name = value("name", existing?.name ?? label);
     const type = value("type", existing?.type);
     const required = value("required", existing?.required ?? false);
     const editableBy = value("editableBy", existing?.editableBy);
     const visibleTo = value("visibleTo", existing?.visibleTo);
     const position = value("position", existing?.position ?? 0);
+    const shareWithNpcs = value("shareWithNpcs", existing?.shareWithNpcs ?? false);
     this.validateLabel(name, "Identificador do campo");
     this.validateLabel(label, "Rótulo do campo");
     if (typeof type !== "string" || !fieldTypes.has(type.toUpperCase())) {
@@ -155,13 +168,16 @@ export class RpgServiceBase {
     if (typeof required !== "boolean") {
       throw new RpgServiceError(400, "A propriedade required deve ser booleana.");
     }
+    if (typeof shareWithNpcs !== "boolean") {
+      throw new RpgServiceError(400, "A propriedade shareWithNpcs deve ser booleana.");
+    }
     if (!permissions.has(editableBy) || !permissions.has(visibleTo)) {
       throw new RpgServiceError(400, "Permissão de edição ou visualização inválida.");
     }
     this.validatePosition(position);
     return {
       name: name.trim(), label: label.trim(), type: type.toUpperCase(),
-      required, editableBy, visibleTo, position,
+      required, editableBy, visibleTo, position, shareWithNpcs,
     };
   }
 
@@ -196,6 +212,7 @@ export class RpgServiceBase {
     }
     await this.repositories.fieldValues.deleteWhere((value) => ids.has(value.fieldId));
     await this.repositories.fieldOptions.deleteWhere((option) => ids.has(option.fieldId));
+    await this.repositories.combatantFieldValues.deleteWhere((value) => ids.has(value.fieldId));
     await this.repositories.fields.deleteWhere((field) => ids.has(field.id));
   }
 

@@ -39,6 +39,7 @@ Os campos devem permitir:
 - [x] Definir se o campo é obrigatório
 - [x] Definir quem pode editar o campo
 - [x] Definir quem pode visualizar o campo
+- [x] Compartilhar campos selecionados com o cadastro de NPCs/criaturas
 
 Se estiver na visão Player:
 - [x] Deve conseguir entrar em uma campanha vinculada à sua conta
@@ -46,6 +47,10 @@ Se estiver na visão Player:
 - [x] Deve conseguir visualizar os grupos e campos permitidos
 - [x] Deve conseguir preencher os campos que pode editar
 - [x] Deve conseguir alterar o próprio personagem
+
+Combates armazenam participantes, iniciativas e ações por turno, alvos e
+histórico de ações. Cada personagem também pode ter ataques com dano e custo
+em ações.
 
 ## Requisitos
 
@@ -95,7 +100,7 @@ Para conectar a API hospedada, abra o serviço do backend no Render, entre em
 deploy. Configure também `CORS_ORIGIN` com a URL publicada do frontend.
 
 Não publique nem envie esse arquivo para o Git. Ao iniciar, a API conecta ao
-banco e aplica a migração inicial automaticamente. Os dados existentes em CSV
+banco e aplica as migrações automaticamente. Os dados existentes em CSV
 ou Excel não são copiados para o PostgreSQL; importe-os separadamente se
 precisar preservá-los.
 
@@ -135,6 +140,13 @@ usada para verificar se a API está disponível.
   personagens
 - `GET/PUT/DELETE /api/characters/:characterId/values/:fieldId`: gerencia os
   valores dos campos da ficha
+- `GET/POST /api/campaigns/:campaignId/combats`: lista ou cria combates
+- `GET/PATCH/DELETE /api/combats/:combatId`: consulta, encerra/reabre ou remove
+  um combate
+- `POST /api/combats/:combatId/actions`: registra uma ação e seus alvos
+- `POST /api/combats/:combatId/advance`: avança a iniciativa (GM)
+- `GET/POST /api/characters/:characterId/attacks`: lista ou cadastra ataques
+- `PATCH/DELETE /api/attacks/:attackId`: altera ou remove um ataque
 
 As rotas protegidas exigem o token no cabeçalho:
 

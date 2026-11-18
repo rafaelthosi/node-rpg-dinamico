@@ -14,8 +14,10 @@ export class FieldService extends RpgServiceBase {
   async create(actor, sectionId, input) {
     const section = await this.requireRecord("sections", sectionId, "Seção não encontrada.");
     await this.requireCampaignGM(actor, section.campaignId);
+    const field = this.normalizeField(input);
+    field.name = await this.uniqueIdentifier(sectionId, field.label);
     return this.repository.create("fields", {
-      ...this.normalizeField(input), sectionId, createdAt: new Date().toISOString(),
+      ...field, sectionId, createdAt: new Date().toISOString(),
     });
   }
 
@@ -23,7 +25,31 @@ export class FieldService extends RpgServiceBase {
     const field = await this.requireRecord("fields", fieldId, "Campo não encontrado.");
     const section = await this.requireRecord("sections", field.sectionId, "Seção não encontrada.");
     await this.requireCampaignGM(actor, section.campaignId);
-    return this.repository.update("fields", fieldId, this.normalizeField(input, field));
+    const updates = this.normalizeField(input, field);
+    updates.name = await this.uniqueIdentifier(field.sectionId, updates.label, fieldId);
+    return this.repository.update("fields", fieldId, updates);
+  }
+
+  async uniqueIdentifier(sectionId, label, excludedId = null) {
+    const base = label.normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 255)
+      .replace(/_+$/g, "") || "campo";
+    const existing = await this.repository.list("fields", (field) => (
+      field.sectionId === sectionId && field.id !== excludedId
+    ));
+    const identifiers = new Set(existing.map((field) => field.name));
+    let identifier = base;
+    let suffix = 2;
+    while (identifiers.has(identifier)) {
+      const ending = `_${suffix}`;
+      identifier = `${base.slice(0, 255 - ending.length)}${ending}`;
+      suffix += 1;
+    }
+    return identifier;
   }
 
   async delete(actor, fieldId) {

@@ -70,6 +70,26 @@ export class CampaignService extends RpgServiceBase {
       character.campaignId === campaignId
     ));
     const characterIds = new Set(characters.map(({ id }) => id));
+    const combats = await this.repository.list("combats", (combat) => combat.campaignId === campaignId);
+    const combatIds = new Set(combats.map(({ id }) => id));
+    const combatants = await this.repository.list("combatants", (combatant) => (
+      combatIds.has(combatant.combatId)
+    ));
+    const combatantIds = new Set(combatants.map(({ id }) => id));
+    const combatActions = await this.repository.list("combat_actions", (action) => (
+      combatIds.has(action.combatId)
+    ));
+    const combatActionIds = new Set(combatActions.map(({ id }) => id));
+    await this.repository.deleteWhere("combat_action_targets", (target) => (
+      combatActionIds.has(target.actionId)
+    ));
+    await this.repository.deleteWhere("combat_actions", (action) => combatIds.has(action.combatId));
+    await this.repository.deleteWhere("combatant_field_values", (value) => (
+      combatantIds.has(value.combatantId) || fieldIds.has(value.fieldId)
+    ));
+    await this.repository.deleteWhere("combatants", (combatant) => combatIds.has(combatant.combatId));
+    await this.repository.deleteWhere("combats", (combat) => combat.campaignId === campaignId);
+    await this.repository.deleteWhere("attacks", (attack) => characterIds.has(attack.characterId));
     await this.repository.deleteWhere("field_values", (value) => (
       characterIds.has(value.characterId) || fieldIds.has(value.fieldId)
     ));

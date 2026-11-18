@@ -23,7 +23,8 @@ const TABLES = {
   fields: [
     ["id", "id"], ["sectionId", "section_id"], ["name", "name"], ["label", "label"],
     ["type", "type"], ["required", "required"], ["editableBy", "editable_by"],
-    ["visibleTo", "visible_to"], ["position", "position"], ["createdAt", "created_at"],
+    ["visibleTo", "visible_to"], ["position", "position"],
+    ["shareWithNpcs", "share_with_npcs"], ["createdAt", "created_at"],
   ],
   field_options: [
     ["id", "id"], ["fieldId", "field_id"], ["label", "label"], ["value", "value"],
@@ -37,10 +38,39 @@ const TABLES = {
     ["id", "id"], ["characterId", "character_id"], ["fieldId", "field_id"],
     ["value", "value"], ["updatedAt", "updated_at"],
   ],
+  combats: [
+    ["id", "id"], ["campaignId", "campaign_id"], ["name", "name"],
+    ["currentRound", "current_round"], ["currentTurnIndex", "current_turn_index"],
+    ["active", "active"], ["createdAt", "created_at"],
+  ],
+  combatants: [
+    ["id", "id"], ["combatId", "combat_id"], ["characterId", "character_id"],
+    ["name", "name"], ["isEnemy", "is_enemy"], ["initiative", "initiative"],
+    ["actionsPerTurn", "actions_per_turn"],
+  ],
+  combat_actions: [
+    ["id", "id"], ["combatId", "combat_id"], ["combatantId", "combatant_id"],
+    ["round", "round"], ["description", "description"], ["damage", "damage"],
+    ["createdAt", "created_at"],
+  ],
+  combat_action_targets: [
+    ["id", "id"], ["actionId", "action_id"], ["combatantId", "combatant_id"],
+  ],
+  combatant_field_values: [
+    ["id", "id"], ["combatantId", "combatant_id"], ["fieldId", "field_id"], ["value", "value"],
+  ],
+  attacks: [
+    ["id", "id"], ["characterId", "character_id"], ["name", "name"],
+    ["description", "description"], ["damage", "damage"], ["effects", "effects"],
+    ["observation", "observation"], ["actionsConsumed", "actions_consumed"],
+    ["createdAt", "created_at"],
+  ],
 };
 
-const NUMERIC_COLUMNS = new Set(["position"]);
-const BOOLEAN_COLUMNS = new Set(["required"]);
+const NUMERIC_COLUMNS = new Set([
+  "position", "currentRound", "currentTurnIndex", "initiative", "actionsPerTurn", "round", "actionsConsumed",
+]);
+const BOOLEAN_COLUMNS = new Set(["required", "shareWithNpcs", "active", "isEnemy"]);
 
 function parseCsv(content, table) {
   const rows = [];
@@ -89,22 +119,35 @@ function parseCsv(content, table) {
     return [];
   }
 
-  const expectedHeaders = TABLES[table].map(([, header]) => header);
+  let columns = TABLES[table];
+  const expectedHeaders = columns.map(([, header]) => header);
   const headers = rows[0].map((header, index) => (
     index === 0 ? header.replace(/^\uFEFF/, "") : header
   ));
-  if (headers.length !== expectedHeaders.length
+  const legacyFieldHeaders = table === "fields"
+    ? expectedHeaders.filter((header) => header !== "share_with_npcs")
+    : null;
+  const isLegacyFieldsFile = legacyFieldHeaders
+    && headers.length === legacyFieldHeaders.length
+    && legacyFieldHeaders.every((header, index) => headers[index] === header);
+  if (isLegacyFieldsFile) {
+    columns = columns.filter(([key]) => key !== "shareWithNpcs");
+  } else if (headers.length !== expectedHeaders.length
       || expectedHeaders.some((header, index) => headers[index] !== header)) {
     throw new Error(`O arquivo CSV da tabela "${table}" possui cabeçalhos incompatíveis.`);
   }
 
   return rows.slice(1).map((cells, rowIndex) => {
-    if (cells.length !== expectedHeaders.length) {
+    const rowHeaders = isLegacyFieldsFile ? legacyFieldHeaders : expectedHeaders;
+    if (cells.length !== rowHeaders.length) {
       throw new Error(`A linha ${rowIndex + 2} do CSV "${table}" possui quantidade de colunas inválida.`);
     }
-    return Object.fromEntries(
-      TABLES[table].map(([key], index) => [key, parseValue(key, cells[index])]),
-    );
+    return {
+      ...Object.fromEntries(
+        columns.map(([key], index) => [key, parseValue(key, cells[index])]),
+      ),
+      ...(isLegacyFieldsFile ? { shareWithNpcs: false } : {}),
+    };
   });
 }
 
@@ -220,6 +263,8 @@ export class CsvWorkbookStore {
         campaign_members: ["campaignId", "userId"],
         field_values: ["characterId", "fieldId"],
         field_options: ["fieldId", "value"],
+        combat_action_targets: ["actionId", "combatantId"],
+        combatant_field_values: ["combatantId", "fieldId"],
       };
       const keys = uniquePairs[table];
       if (keys && records.some((record) => keys.every((key) => record[key] === input[key]))) {
@@ -348,22 +393,33 @@ export class CsvWorkbookStore {
       return [];
     }
     const sourceHeaders = worksheet.getRow(1).values.slice(1);
+    const legacyColumns = table === "fields"
+      ? columns.filter(([key]) => key !== "shareWithNpcs")
+      : columns;
     const headerKeys = columns.map(([key, header]) => (
       table === "users"
         ? ({ id: "id", username: "username", passwordHash: "password_hash", role: "role", createdAt: "created_at" })[key]
         : key
     ));
-    if (headerKeys.some((header, index) => sourceHeaders[index] !== header)) {
+    const legacyHeaderKeys = legacyColumns.map(([key]) => key);
+    const isLegacyFieldsSheet = table === "fields"
+      && sourceHeaders.length === legacyHeaderKeys.length
+      && legacyHeaderKeys.every((header, index) => sourceHeaders[index] === header);
+    if (!isLegacyFieldsSheet && headerKeys.some((header, index) => sourceHeaders[index] !== header)) {
       throw new Error(`A aba "${table}" da planilha antiga possui colunas incompatíveis.`);
     }
 
+    const sourceColumns = isLegacyFieldsSheet ? legacyColumns : columns;
     const records = [];
     worksheet.eachRow((row, rowNumber) => {
       if (rowNumber > 1) {
-        records.push(Object.fromEntries(columns.map(([key], index) => [
-          key,
-          parseValue(key, excelCellValue(row.getCell(index + 1).value) ?? ""),
-        ])));
+        records.push({
+          ...Object.fromEntries(sourceColumns.map(([key], index) => [
+            key,
+            parseValue(key, excelCellValue(row.getCell(index + 1).value) ?? ""),
+          ])),
+          ...(isLegacyFieldsSheet ? { shareWithNpcs: false } : {}),
+        });
       }
     });
     return records;

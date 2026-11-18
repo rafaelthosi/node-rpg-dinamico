@@ -7,6 +7,7 @@ import { CsvFieldRepository } from "./CsvFieldRepository.js";
 import { CsvFieldValueRepository } from "./CsvFieldValueRepository.js";
 import { CsvSectionRepository } from "./CsvSectionRepository.js";
 import { CsvUserRepository } from "./CsvUserRepository.js";
+import { CsvTableRepository } from "./CsvTableRepository.js";
 
 export class CsvRpgRepository {
   constructor(directoryPath, legacyExcelPath) {
@@ -19,6 +20,12 @@ export class CsvRpgRepository {
     this.fieldOptions = new CsvFieldOptionRepository(this.store);
     this.characters = new CsvCharacterRepository(this.store);
     this.fieldValues = new CsvFieldValueRepository(this.store);
+    this.combats = new CsvTableRepository(this.store, "combats");
+    this.combatants = new CsvTableRepository(this.store, "combatants");
+    this.combatActions = new CsvTableRepository(this.store, "combat_actions");
+    this.combatActionTargets = new CsvTableRepository(this.store, "combat_action_targets");
+    this.combatantFieldValues = new CsvTableRepository(this.store, "combatant_field_values");
+    this.attacks = new CsvTableRepository(this.store, "attacks");
     this.tables = new Map([
       ["users", this.users],
       ["campaigns", this.campaigns],
@@ -28,6 +35,12 @@ export class CsvRpgRepository {
       ["field_options", this.fieldOptions],
       ["characters", this.characters],
       ["field_values", this.fieldValues],
+      ["combats", this.combats],
+      ["combatants", this.combatants],
+      ["combat_actions", this.combatActions],
+      ["combat_action_targets", this.combatActionTargets],
+      ["combatant_field_values", this.combatantFieldValues],
+      ["attacks", this.attacks],
     ]);
   }
 
