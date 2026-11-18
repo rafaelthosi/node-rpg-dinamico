@@ -84,6 +84,29 @@ test("mantém listagem filtrável e converte conflitos de unicidade", async () =
   });
 });
 
+test("reconhece a tabela de valores dos combatentes", async () => {
+  const repository = new PostgresTableRepository({
+    query: async (text) => {
+      assert.equal(text, 'SELECT * FROM "combatant_field_values"');
+      return {
+        rows: [{
+          id: "value-id",
+          combatant_id: "combatant-id",
+          field_id: "field-id",
+          value: "16",
+        }],
+      };
+    },
+  }, "combatant_field_values");
+
+  assert.deepEqual(await repository.list(), [{
+    id: "value-id",
+    combatantId: "combatant-id",
+    fieldId: "field-id",
+    value: "16",
+  }]);
+});
+
 test("trata identificadores inválidos como registros inexistentes", async () => {
   let queried = false;
   const repository = new PostgresTableRepository({

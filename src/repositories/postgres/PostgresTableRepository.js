@@ -130,14 +130,14 @@ export const POSTGRES_TABLES = {
       actionId: "action_id",
       combatantId: "combatant_id",
     },
-    combatant_field_values: {
-      sqlName: "combatant_field_values",
-      columns: {
-        id: "id",
-        combatantId: "combatant_id",
-        fieldId: "field_id",
-        value: "value",
-      },
+  },
+  combatant_field_values: {
+    sqlName: "combatant_field_values",
+    columns: {
+      id: "id",
+      combatantId: "combatant_id",
+      fieldId: "field_id",
+      value: "value",
     },
   },
   attacks: {
