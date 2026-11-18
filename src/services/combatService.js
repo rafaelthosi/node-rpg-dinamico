@@ -183,6 +183,101 @@ export class CombatService extends RpgServiceBase {
     return this.get(actor, combat.id);
   }
 
+  async addParticipant(actor, combatId, participant) {
+    const combat = await this.requireRecord("combats", combatId, "Combate não encontrado.");
+    await this.requireCampaignGM(actor, combat.campaignId);
+    if (!participant || typeof participant !== "object") {
+      throw new RpgServiceError(400, "Participante de combate inválido.");
+    }
+    this.validateInteger(participant.initiative, "Iniciativa", 0);
+    this.validateInteger(participant.actionsPerTurn, "Ações por turno", 1);
+
+    const combatants = await this.repository.list("combatants", (item) => item.combatId === combatId);
+    let combatantInput;
+    let fieldValues = [];
+
+    if (participant.characterId) {
+      if (combatants.some((item) => item.characterId === participant.characterId)) {
+        throw new RpgServiceError(400, "Este personagem já participa do combate.");
+      }
+      const character = await this.requireRecord(
+        "characters",
+        participant.characterId,
+        "Personagem não encontrado.",
+      );
+      if (character.campaignId !== combat.campaignId) {
+        throw new RpgServiceError(400, "O personagem precisa pertencer à campanha do combate.");
+      }
+      const membership = (await this.repository.list("campaign_members", (member) => (
+        member.campaignId === combat.campaignId
+        && member.userId === character.userId
+        && member.status === "ACTIVE"
+      )))[0];
+      if (!membership) {
+        throw new RpgServiceError(400, "O personagem precisa pertencer a um jogador ativo na campanha.");
+      }
+      combatantInput = {
+        characterId: character.id,
+        name: character.name,
+        isEnemy: false,
+        initiative: participant.initiative,
+        actionsPerTurn: participant.actionsPerTurn,
+      };
+    } else {
+      this.validateLabel(participant.name, "Nome do NPC ou criatura");
+      if (typeof participant.isEnemy !== "boolean") {
+        throw new RpgServiceError(400, "Informe se o NPC ou criatura é um inimigo.");
+      }
+      if (!Array.isArray(participant.fieldValues)) {
+        throw new RpgServiceError(400, "Os valores compartilhados do NPC devem ser uma lista.");
+      }
+      const sharedFields = (await this.campaignFields(combat.campaignId))
+        .filter((field) => field.shareWithNpcs);
+      const seenFieldIds = new Set();
+      for (const entry of participant.fieldValues) {
+        const field = sharedFields.find((item) => item.id === entry?.fieldId);
+        if (!field || seenFieldIds.has(field.id)) {
+          throw new RpgServiceError(400, "Campo compartilhado inválido ou duplicado.");
+        }
+        if (typeof entry.value !== "string" || entry.value.length > 10000) {
+          throw new RpgServiceError(400, "Valor de campo do NPC inválido.");
+        }
+        if (field.required && !entry.value.trim()) {
+          throw new RpgServiceError(400, `O campo "${field.label}" é obrigatório para NPCs.`);
+        }
+        if (entry.value.trim()) {
+          await this.validateFieldValue(field, entry.value);
+          fieldValues.push({ fieldId: field.id, value: entry.value });
+        }
+        seenFieldIds.add(field.id);
+      }
+      for (const field of sharedFields) {
+        if (field.required && !seenFieldIds.has(field.id)) {
+          throw new RpgServiceError(400, `O campo "${field.label}" é obrigatório para NPCs.`);
+        }
+      }
+      combatantInput = {
+        characterId: null,
+        name: participant.name.trim(),
+        isEnemy: participant.isEnemy,
+        initiative: participant.initiative,
+        actionsPerTurn: participant.actionsPerTurn,
+      };
+    }
+
+    const combatant = await this.repository.create("combatants", {
+      ...combatantInput,
+      combatId,
+    });
+    for (const fieldValue of fieldValues) {
+      await this.repository.create("combatant_field_values", {
+        ...fieldValue,
+        combatantId: combatant.id,
+      });
+    }
+    return this.get(actor, combatId);
+  }
+
   async addAction(actor, combatId, input) {
     const combat = await this.requireRecord("combats", combatId, "Combate não encontrado.");
     await this.requireCampaignAccess(actor, combat.campaignId);

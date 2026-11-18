@@ -16,6 +16,11 @@ export function createCombatRoutes(service) {
   router.get("/combats/:combatId", asyncRoute(async (request, response) => {
     response.json(await service.get(actor(request), request.params.combatId));
   }));
+  router.post("/combats/:combatId/participants", asyncRoute(async (request, response) => {
+    response.status(201).json(await service.addParticipant(
+      actor(request), request.params.combatId, request.body ?? {},
+    ));
+  }));
   router.post("/combats/:combatId/actions", asyncRoute(async (request, response) => {
     response.status(201).json(await service.addAction(
       actor(request), request.params.combatId, request.body ?? {},
