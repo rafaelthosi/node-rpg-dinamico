@@ -60,6 +60,7 @@ export class PostgresRpgRepository {
       for (const version of [
         "001_create_database_schema.sql",
         "002_add_combats_attacks.sql",
+        "003_add_combat_grid_and_action_details.sql",
       ]) {
         const applied = await client.query(
           "SELECT 1 FROM rpg_schema_migrations WHERE version = $1",

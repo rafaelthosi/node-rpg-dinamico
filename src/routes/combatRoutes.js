@@ -21,6 +21,11 @@ export function createCombatRoutes(service) {
       actor(request), request.params.combatId, request.body ?? {},
     ));
   }));
+  router.patch("/combats/:combatId/grid", asyncRoute(async (request, response) => {
+    response.json(await service.setGridSize(
+      actor(request), request.params.combatId, request.body ?? {},
+    ));
+  }));
   router.post("/combats/:combatId/actions", asyncRoute(async (request, response) => {
     response.status(201).json(await service.addAction(
       actor(request), request.params.combatId, request.body ?? {},

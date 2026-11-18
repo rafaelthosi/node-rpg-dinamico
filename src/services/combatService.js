@@ -1,6 +1,21 @@
 import { RpgServiceBase, roleOf } from "./rpgServiceBase.js";
 import { RpgServiceError } from "./rpgServiceError.js";
 
+function gridColumnName(index) {
+  let value = index + 1;
+  let label = "";
+  while (value > 0) {
+    value -= 1;
+    label = String.fromCharCode(65 + (value % 26)) + label;
+    value = Math.floor(value / 26);
+  }
+  return label.toLowerCase();
+}
+
+function gridPositionAt(index, columns) {
+  return `${gridColumnName(index % columns)}${Math.floor(index / columns) + 1}`;
+}
+
 export class CombatService extends RpgServiceBase {
   async list(actor, campaignId) {
     await this.requireCampaignAccess(actor, campaignId);
@@ -26,7 +41,7 @@ export class CombatService extends RpgServiceBase {
     const storedCombatants = await this.repository.list("combatants", (item) => item.combatId === combatId);
     const sharedFields = (await this.campaignFields(combat.campaignId))
       .filter((field) => field.shareWithNpcs);
-    const combatants = await Promise.all(storedCombatants.map(async (combatant) => {
+    const combatants = await Promise.all(storedCombatants.map(async (combatant, index) => {
       const savedFieldValues = await this.repository.list(
         "combatant_field_values",
         (item) => item.combatantId === combatant.id,
@@ -36,11 +51,17 @@ export class CombatService extends RpgServiceBase {
         return field ? [{ fieldId: field.id, label: field.label, value: item.value }] : [];
       });
       if (!combatant.characterId) {
-        return { ...combatant, isMine: false, sharedFields: sharedValues };
+        return {
+          ...combatant,
+          position: combatant.position ?? gridPositionAt(index, combat.gridColumns ?? 10),
+          isMine: false,
+          sharedFields: sharedValues,
+        };
       }
       const character = await this.repository.findById("characters", combatant.characterId);
       return {
         ...combatant,
+        position: combatant.position ?? gridPositionAt(index, combat.gridColumns ?? 10),
         isMine: character?.userId === actor.id,
         sharedFields: sharedValues,
       };
@@ -55,7 +76,20 @@ export class CombatService extends RpgServiceBase {
     }
 
     const actions = await this.repository.list("combat_actions", (item) => item.combatId === combatId);
-    const actionDetails = await Promise.all(actions.map(async (action) => ({
+    const sortedActions = actions.sort((first, second) => (
+      first.round - second.round || first.createdAt.localeCompare(second.createdAt)
+    ));
+    const latestPositions = new Map();
+    for (const action of sortedActions) {
+      if (action.position) {
+        latestPositions.set(action.combatantId, action.position);
+      }
+    }
+    const positionedCombatants = combatants.map((combatant) => ({
+      ...combatant,
+      position: latestPositions.get(combatant.id) ?? combatant.position,
+    }));
+    const actionDetails = await Promise.all(sortedActions.map(async (action) => ({
       ...action,
       targets: await this.repository.list("combat_action_targets", (target) => (
         target.actionId === action.id
@@ -63,16 +97,20 @@ export class CombatService extends RpgServiceBase {
     })));
     return {
       ...combat,
-      combatants,
-      actions: actionDetails.sort((first, second) => (
-        first.round - second.round || first.createdAt.localeCompare(second.createdAt)
-      )),
+      gridRows: combat.gridRows ?? 10,
+      gridColumns: combat.gridColumns ?? 10,
+      combatants: positionedCombatants,
+      actions: actionDetails,
     };
   }
 
   async create(actor, campaignId, input) {
     await this.requireCampaignGM(actor, campaignId);
     this.validateLabel(input.name, "Nome do combate");
+    const gridRows = input.gridRows ?? 10;
+    const gridColumns = input.gridColumns ?? 10;
+    this.validateGridSize(gridRows, "Linhas");
+    this.validateGridSize(gridColumns, "Colunas");
     if (!Array.isArray(input.participants) || input.participants.length === 0) {
       throw new RpgServiceError(400, "Adicione ao menos um personagem, NPC ou criatura.");
     }
@@ -81,12 +119,20 @@ export class CombatService extends RpgServiceBase {
       .filter((field) => field.shareWithNpcs);
     const participants = [];
     const usedCharacters = new Set();
+    const usedPositions = new Set();
     for (const participant of input.participants) {
       if (!participant || typeof participant !== "object") {
         throw new RpgServiceError(400, "Participante de combate inválido.");
       }
       this.validateInteger(participant.initiative, "Iniciativa", 0);
       this.validateInteger(participant.actionsPerTurn, "Ações por turno", 1);
+      const position = participant.position === undefined
+        ? this.nextAvailablePosition(gridRows, gridColumns, usedPositions)
+        : this.validateGridPosition(participant.position, gridRows, gridColumns);
+      if (usedPositions.has(position)) {
+        throw new RpgServiceError(400, `A posição ${position} já está ocupada.`);
+      }
+      usedPositions.add(position);
       if (participant.characterId) {
         if (usedCharacters.has(participant.characterId)) {
           throw new RpgServiceError(400, "Um personagem não pode ser adicionado duas vezes ao combate.");
@@ -114,6 +160,7 @@ export class CombatService extends RpgServiceBase {
           isEnemy: false,
           initiative: participant.initiative,
           actionsPerTurn: participant.actionsPerTurn,
+          position,
         });
       } else {
         this.validateLabel(participant.name, "Nome do NPC ou criatura");
@@ -154,6 +201,7 @@ export class CombatService extends RpgServiceBase {
           isEnemy: participant.isEnemy,
           initiative: participant.initiative,
           actionsPerTurn: participant.actionsPerTurn,
+          position,
           fieldValues: savedValues,
         });
       }
@@ -165,6 +213,8 @@ export class CombatService extends RpgServiceBase {
       currentRound: 1,
       currentTurnIndex: 0,
       active: true,
+      gridRows,
+      gridColumns,
       createdAt: new Date().toISOString(),
     });
     for (const participant of participants) {
@@ -192,7 +242,21 @@ export class CombatService extends RpgServiceBase {
     this.validateInteger(participant.initiative, "Iniciativa", 0);
     this.validateInteger(participant.actionsPerTurn, "Ações por turno", 1);
 
-    const combatants = await this.repository.list("combatants", (item) => item.combatId === combatId);
+    const combatants = (await this.get(actor, combatId)).combatants;
+    const currentCombatantId = [...combatants]
+      .sort((first, second) => second.initiative - first.initiative)[combat.currentTurnIndex]?.id;
+    const usedPositions = new Set(combatants.map((item) => item.position));
+    const position = participant.position === undefined
+      ? this.nextAvailablePosition(combat.gridRows ?? 10, combat.gridColumns ?? 10, usedPositions)
+      : this.validateGridPosition(
+        participant.position,
+        combat.gridRows ?? 10,
+        combat.gridColumns ?? 10,
+      );
+    if (usedPositions.has(position)) {
+      throw new RpgServiceError(400, `A posição ${position} já está ocupada.`);
+    }
+
     let combatantInput;
     let fieldValues = [];
 
@@ -222,6 +286,7 @@ export class CombatService extends RpgServiceBase {
         isEnemy: false,
         initiative: participant.initiative,
         actionsPerTurn: participant.actionsPerTurn,
+        position,
       };
     } else {
       this.validateLabel(participant.name, "Nome do NPC ou criatura");
@@ -262,6 +327,7 @@ export class CombatService extends RpgServiceBase {
         isEnemy: participant.isEnemy,
         initiative: participant.initiative,
         actionsPerTurn: participant.actionsPerTurn,
+        position,
       };
     }
 
@@ -275,6 +341,41 @@ export class CombatService extends RpgServiceBase {
         combatantId: combatant.id,
       });
     }
+    if (currentCombatantId) {
+      const sortedCombatants = [...combatants, { ...combatantInput, id: combatant.id }]
+        .sort((first, second) => second.initiative - first.initiative);
+      await this.repository.update("combats", combatId, {
+        currentTurnIndex: sortedCombatants.findIndex((item) => item.id === currentCombatantId),
+      });
+    }
+    return this.get(actor, combatId);
+  }
+
+  async setGridSize(actor, combatId, input) {
+    const combat = await this.requireRecord("combats", combatId, "Combate não encontrado.");
+    await this.requireCampaignGM(actor, combat.campaignId);
+    if (!combat.active) {
+      throw new RpgServiceError(400, "O tamanho do grid só pode ser alterado enquanto o combate estiver em andamento.");
+    }
+    this.validateGridSize(input.gridRows, "Linhas");
+    this.validateGridSize(input.gridColumns, "Colunas");
+    const currentCombat = await this.get(actor, combatId);
+    const occupiedPositions = new Set();
+    for (const combatant of currentCombat.combatants) {
+      const position = this.validateGridPosition(
+        combatant.position,
+        input.gridRows,
+        input.gridColumns,
+      );
+      if (occupiedPositions.has(position)) {
+        throw new RpgServiceError(400, `A nova dimensão deixa mais de um participante em ${position}.`);
+      }
+      occupiedPositions.add(position);
+    }
+    await this.repository.update("combats", combatId, {
+      gridRows: input.gridRows,
+      gridColumns: input.gridColumns,
+    });
     return this.get(actor, combatId);
   }
 
@@ -308,8 +409,66 @@ export class CombatService extends RpgServiceBase {
     }
     this.validateLabel(input.description, "Descrição da ação");
     const damage = input.damage ?? "";
-    if (typeof damage !== "string" || damage.length > 255) {
-      throw new RpgServiceError(400, "Dano inválido (até 255 caracteres).");
+    if (
+      (typeof damage !== "string" && typeof damage !== "number")
+      || String(damage).length > 255
+      || (String(damage).trim() && (!Number.isFinite(Number(damage)) || Number(damage) < 0))
+    ) {
+      throw new RpgServiceError(400, "A quantidade de dano deve ser um número igual ou maior que zero.");
+    }
+    const actionType = input.actionType ?? "FREE";
+    if (!["ATTACK", "FREE"].includes(actionType)) {
+      throw new RpgServiceError(400, "Escolha uma ação do tipo ataque ou livre.");
+    }
+    let attackId = null;
+    let attackName = null;
+    let actionsCount;
+    if (actionType === "ATTACK") {
+      if (!combatant.characterId || typeof input.attackId !== "string") {
+        throw new RpgServiceError(400, "Selecione um ataque do personagem que está agindo.");
+      }
+      const attack = await this.requireRecord("attacks", input.attackId, "Ataque não encontrado.");
+      if (attack.characterId !== combatant.characterId) {
+        throw new RpgServiceError(400, "O ataque selecionado não pertence ao personagem que está agindo.");
+      }
+      attackId = attack.id;
+      attackName = attack.name;
+      actionsCount = attack.actionsConsumed;
+    } else {
+      actionsCount = input.actionsCount ?? 1;
+      this.validateInteger(actionsCount, "Quantidade de ações", 1);
+    }
+    const priorActions = await this.repository.list("combat_actions", (item) => (
+      item.combatId === combatId
+    ));
+    const sortedPriorActions = priorActions.sort((first, second) => (
+      first.round - second.round || first.createdAt.localeCompare(second.createdAt)
+    ));
+    const latestPositions = new Map();
+    for (const priorAction of sortedPriorActions) {
+      if (priorAction.position) {
+        latestPositions.set(priorAction.combatantId, priorAction.position);
+      }
+    }
+    const currentPosition = latestPositions.get(combatant.id)
+      ?? combatant.position
+      ?? gridPositionAt(combatants.indexOf(combatant), combat.gridColumns ?? 10);
+    const position = this.validateGridPosition(
+      input.position ?? currentPosition,
+      combat.gridRows ?? 10,
+      combat.gridColumns ?? 10,
+    );
+    const occupiedPosition = combatants.some((other, index) => {
+      if (other.id === combatant.id) {
+        return false;
+      }
+      const otherPosition = latestPositions.get(other.id)
+        ?? other.position
+        ?? gridPositionAt(index, combat.gridColumns ?? 10);
+      return otherPosition === position;
+    });
+    if (occupiedPosition) {
+      throw new RpgServiceError(400, `A posição ${position} já está ocupada.`);
     }
     const targets = input.targets ?? [];
     if (!Array.isArray(targets) || targets.some((id) => typeof id !== "string")) {
@@ -327,7 +486,8 @@ export class CombatService extends RpgServiceBase {
       && item.combatantId === combatant.id
       && item.round === combat.currentRound
     ));
-    if (turnActions.length >= combatant.actionsPerTurn) {
+    const actionsUsed = turnActions.reduce((total, action) => total + (action.actionsCount ?? 1), 0);
+    if (actionsUsed + actionsCount > combatant.actionsPerTurn) {
       throw new RpgServiceError(400, "Este personagem já usou todas as ações deste turno.");
     }
     const action = await this.repository.create("combat_actions", {
@@ -335,7 +495,12 @@ export class CombatService extends RpgServiceBase {
       combatantId: combatant.id,
       round: combat.currentRound,
       description: input.description.trim(),
-      damage: damage.trim(),
+      damage: String(damage).trim(),
+      position,
+      actionType,
+      attackId,
+      attackName,
+      actionsCount,
       createdAt: new Date().toISOString(),
     });
     for (const target of targetCombatants) {
@@ -392,6 +557,41 @@ export class CombatService extends RpgServiceBase {
     await this.repository.deleteWhere("combatants", (item) => item.combatId === combatId);
     await this.repository.delete("combats", combatId);
     return { deleted: true };
+  }
+
+  validateGridSize(value, label) {
+    if (!Number.isInteger(value) || value < 1 || value > 100) {
+      throw new RpgServiceError(400, `O número de ${label.toLowerCase()} deve ser um inteiro entre 1 e 100.`);
+    }
+  }
+
+  validateGridPosition(position, rows, columns) {
+    if (typeof position !== "string" || position.length > 5) {
+      throw new RpgServiceError(400, "Informe uma posição válida no grid, como b12.");
+    }
+    const match = position.trim().match(/^([a-z]+)([1-9]\d*)$/i);
+    if (!match) {
+      throw new RpgServiceError(400, "Informe uma posição válida no grid, como b12.");
+    }
+    const column = [...match[1].toLowerCase()].reduce(
+      (total, letter) => total * 26 + letter.charCodeAt(0) - 96,
+      0,
+    );
+    const row = Number(match[2]);
+    if (column > columns || row > rows) {
+      throw new RpgServiceError(400, `A posição ${position} está fora do grid ${rows}×${columns}.`);
+    }
+    return `${match[1].toLowerCase()}${row}`;
+  }
+
+  nextAvailablePosition(rows, columns, usedPositions) {
+    for (let index = 0; index < rows * columns; index += 1) {
+      const position = gridPositionAt(index, columns);
+      if (!usedPositions.has(position)) {
+        return position;
+      }
+    }
+    throw new RpgServiceError(400, "Não há quadrados livres no grid para outro participante.");
   }
 
   validateInteger(value, label, minimum) {

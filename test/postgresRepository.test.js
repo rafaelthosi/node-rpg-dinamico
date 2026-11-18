@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { PostgresTableRepository } from "../src/repositories/postgres/PostgresTableRepository.js";
+import {
+  mapPostgresRecord,
+  PostgresTableRepository,
+} from "../src/repositories/postgres/PostgresTableRepository.js";
 import { PostgresUserRepository } from "../src/repositories/postgres/PostgresUserRepository.js";
 
 test("mapeia registros PostgreSQL para o formato usado pelos serviços", async () => {
@@ -105,6 +108,74 @@ test("reconhece a tabela de valores dos combatentes", async () => {
     fieldId: "field-id",
     value: "16",
   }]);
+});
+
+test("mapeia dimensões do grid, coordenadas, ações e pontos de vida", () => {
+  assert.deepEqual(mapPostgresRecord("combats", {
+    id: "combat-id",
+    campaign_id: "campaign-id",
+    name: "Caverna",
+    current_round: 1,
+    current_turn_index: 0,
+    active: true,
+    grid_rows: 12,
+    grid_columns: 10,
+    created_at: "2026-01-01T00:00:00.000Z",
+  }), {
+    id: "combat-id",
+    campaignId: "campaign-id",
+    name: "Caverna",
+    currentRound: 1,
+    currentTurnIndex: 0,
+    active: true,
+    gridRows: 12,
+    gridColumns: 10,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  });
+  assert.deepEqual(mapPostgresRecord("combat_actions", {
+    id: "action-id",
+    combat_id: "combat-id",
+    combatant_id: "combatant-id",
+    round: 1,
+    description: "Ataca",
+    damage: "4",
+    position: "b12",
+    action_type: "ATTACK",
+    attack_id: "attack-id",
+    attack_name: "Golpe",
+    actions_count: 2,
+    created_at: "2026-01-01T00:00:00.000Z",
+  }), {
+    id: "action-id",
+    combatId: "combat-id",
+    combatantId: "combatant-id",
+    round: 1,
+    description: "Ataca",
+    damage: "4",
+    position: "b12",
+    actionType: "ATTACK",
+    attackId: "attack-id",
+    attackName: "Golpe",
+    actionsCount: 2,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  });
+  assert.deepEqual(mapPostgresRecord("characters", {
+    id: "character-id",
+    campaign_id: "campaign-id",
+    user_id: "user-id",
+    name: "Thorin",
+    hit_points: 18,
+    uses_hit_points: true,
+    created_at: "2026-01-01T00:00:00.000Z",
+  }), {
+    id: "character-id",
+    campaignId: "campaign-id",
+    userId: "user-id",
+    name: "Thorin",
+    hitPoints: 18,
+    usesHitPoints: true,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  });
 });
 
 test("trata identificadores inválidos como registros inexistentes", async () => {

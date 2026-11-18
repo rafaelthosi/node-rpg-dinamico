@@ -75,20 +75,36 @@ test("persiste entidades do RPG e aplica escopo de personagem/campanha", async (
     name: "privateToPlayers", label: "Notas do jogador", type: "TEXT", required: false,
     editableBy: "PLAYER", visibleTo: "PLAYER",
   });
-  const character = await service.createCharacter(playerActor, campaign.id, { name: "Thorin" });
+  const character = await service.createCharacter(playerActor, campaign.id, {
+    name: "Thorin", hitPoints: 18, usesHitPoints: true,
+  });
+  assert.equal(character.hitPoints, 18);
+  assert.equal(character.usesHitPoints, true);
+  await assert.rejects(
+    service.updateCharacter(playerActor, character.id, { hitPoints: -1 }),
+    { status: 400 },
+  );
+  const updatedCharacter = await service.updateCharacter(playerActor, character.id, {
+    hitPoints: 16, usesHitPoints: false,
+  });
+  assert.equal(updatedCharacter.hitPoints, 16);
+  assert.equal(updatedCharacter.usesHitPoints, false);
   const gmCreatedCharacter = await service.createCharacter(gmActor, campaign.id, {
     name: "Brisa", userId: player.id,
   });
   assert.equal(gmCreatedCharacter.userId, player.id);
   const combat = await service.combats.create(gmActor, campaign.id, {
     name: "Caverna",
+    gridRows: 12,
+    gridColumns: 10,
     participants: [
-      { characterId: character.id, initiative: 15, actionsPerTurn: 2 },
+      { characterId: character.id, initiative: 15, actionsPerTurn: 3, position: "a1" },
       {
         name: "Goblin",
         isEnemy: true,
         initiative: 9,
         actionsPerTurn: 1,
+        position: "b12",
         fieldValues: [{ fieldId: field.id, value: "16" }],
       },
     ],
@@ -96,13 +112,41 @@ test("persiste entidades do RPG e aplica escopo de personagem/campanha", async (
   const characterCombatant = combat.combatants.find((item) => item.characterId === character.id);
   const goblinCombatant = combat.combatants.find((item) => item.name === "Goblin");
   assert.equal(combat.currentRound, 1);
-  assert.equal(characterCombatant.actionsPerTurn, 2);
+  assert.equal(combat.gridRows, 12);
+  assert.equal(combat.gridColumns, 10);
+  assert.equal(characterCombatant.actionsPerTurn, 3);
+  assert.equal(goblinCombatant.position, "b12");
   assert.equal(characterCombatant.isMine, false);
+  await assert.rejects(
+    service.combats.setGridSize(gmActor, combat.id, { gridRows: 11, gridColumns: 10 }),
+    { status: 400 },
+  );
 
+  const attack = await service.attacks.create(playerActor, character.id, {
+    name: "Golpe rápido",
+    description: "Um ataque simples.",
+    damage: "1d4",
+    effects: "Empurra o alvo",
+    observation: "",
+    actionsConsumed: 2,
+  });
+  await assert.rejects(
+    service.combats.addAction(playerActor, combat.id, {
+      combatantId: characterCombatant.id,
+      description: "Posição inválida",
+      position: "k1",
+      actionType: "FREE",
+      actionsCount: 1,
+    }),
+    { status: 400 },
+  );
   const action = await service.combats.addAction(playerActor, combat.id, {
     combatantId: characterCombatant.id,
     description: "Ataca o goblin",
-    damage: "1d4",
+    damage: "4",
+    position: "a2",
+    actionType: "ATTACK",
+    attackId: attack.id,
     targets: [goblinCombatant.id],
   });
   assert.deepEqual(
@@ -111,20 +155,70 @@ test("persiste entidades do RPG e aplica escopo de personagem/campanha", async (
     [{ fieldId: field.id, label: "Nome", value: "16" }],
   );
   assert.equal(action.actions.length, 1);
+  assert.equal(action.actions[0].position, "a2");
+  assert.equal(action.actions[0].actionType, "ATTACK");
+  assert.equal(action.actions[0].attackName, "Golpe rápido");
+  assert.equal(action.actions[0].actionsCount, 2);
+  assert.equal(action.actions[0].damage, "4");
+  assert.equal(action.combatants.find((item) => item.id === characterCombatant.id).position, "a2");
   assert.deepEqual(action.actions[0].targets.map(({ combatantId }) => combatantId), [goblinCombatant.id]);
   await service.combats.addAction(playerActor, combat.id, {
     combatantId: characterCombatant.id,
     description: "Segundo golpe",
+    position: "a2",
+    actionType: "FREE",
+    actionsCount: 1,
     targets: [],
   });
   await assert.rejects(
     service.combats.addAction(playerActor, combat.id, {
       combatantId: characterCombatant.id,
       description: "Terceiro golpe",
+      position: "a2",
+      actionType: "FREE",
+      actionsCount: 1,
       targets: [],
     }),
     { status: 400 },
   );
+  await assert.rejects(
+    service.combats.addParticipant(gmActor, combat.id, {
+      characterId: gmCreatedCharacter.id,
+      initiative: 8,
+      actionsPerTurn: 1,
+      position: "k1",
+    }),
+    { status: 400 },
+  );
+  const addedCombat = await service.combats.addParticipant(gmActor, combat.id, {
+    characterId: gmCreatedCharacter.id,
+    initiative: 18,
+    actionsPerTurn: 1,
+    position: "c2",
+  });
+  assert.equal(
+    addedCombat.combatants.find((item) => item.characterId === gmCreatedCharacter.id).position,
+    "c2",
+  );
+  assert.equal(addedCombat.currentTurnIndex, 1);
+  assert.equal(
+    [...addedCombat.combatants].sort((first, second) => second.initiative - first.initiative)[
+      addedCombat.currentTurnIndex
+    ].characterId,
+    character.id,
+  );
+  const resizedCombat = await service.combats.setGridSize(gmActor, combat.id, {
+    gridRows: 15,
+    gridColumns: 12,
+  });
+  assert.equal(resizedCombat.gridRows, 15);
+  assert.equal(resizedCombat.gridColumns, 12);
+  await service.combats.setActive(gmActor, combat.id, false);
+  await assert.rejects(
+    service.combats.setGridSize(gmActor, combat.id, { gridRows: 10, gridColumns: 10 }),
+    { status: 400 },
+  );
+  await service.combats.setActive(gmActor, combat.id, true);
   await service.combats.advanceTurn(gmActor, combat.id);
   await assert.rejects(
     service.combats.addAction(playerActor, combat.id, {
@@ -134,14 +228,6 @@ test("persiste entidades do RPG e aplica escopo de personagem/campanha", async (
     }),
     { status: 403 },
   );
-  const attack = await service.attacks.create(playerActor, character.id, {
-    name: "Golpe rápido",
-    description: "Um ataque simples.",
-    damage: "1d4",
-    effects: "Empurra o alvo",
-    observation: "",
-    actionsConsumed: 1,
-  });
   assert.equal(attack.characterId, character.id);
   assert.equal((await service.attacks.list(playerActor, character.id))[0].id, attack.id);
   await assert.rejects(

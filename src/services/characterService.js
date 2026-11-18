@@ -9,9 +9,14 @@ export class CharacterService extends RpgServiceBase {
     ));
   }
 
-  async create(actor, campaignId, { name, userId }) {
+  async create(actor, campaignId, input) {
     await this.requireCampaignAccess(actor, campaignId);
+    const { name, userId } = input;
     this.validateLabel(name, "Nome do personagem");
+    const hitPoints = input.hitPoints ?? 0;
+    const usesHitPoints = input.usesHitPoints ?? false;
+    this.validateHitPoints(hitPoints);
+    this.validateUsesHitPoints(usesHitPoints);
     const characterUserId = userId ?? actor.id;
     if (characterUserId !== actor.id) {
       this.requireRole(actor, "GM");
@@ -29,15 +34,47 @@ export class CharacterService extends RpgServiceBase {
       }
     }
     return this.repository.create("characters", {
-      campaignId, userId: characterUserId, name: name.trim(), createdAt: new Date().toISOString(),
+      campaignId,
+      userId: characterUserId,
+      name: name.trim(),
+      hitPoints,
+      usesHitPoints,
+      createdAt: new Date().toISOString(),
     });
   }
 
-  async update(actor, characterId, { name }) {
+  async update(actor, characterId, input) {
     const character = await this.requireRecord("characters", characterId, "Personagem não encontrado.");
     await this.requireCharacterAccess(actor, character);
-    this.validateLabel(name, "Nome do personagem");
-    return this.repository.update("characters", characterId, { name: name.trim() });
+    const updates = {};
+    if (Object.hasOwn(input, "name")) {
+      this.validateLabel(input.name, "Nome do personagem");
+      updates.name = input.name.trim();
+    }
+    if (Object.hasOwn(input, "hitPoints")) {
+      this.validateHitPoints(input.hitPoints);
+      updates.hitPoints = input.hitPoints;
+    }
+    if (Object.hasOwn(input, "usesHitPoints")) {
+      this.validateUsesHitPoints(input.usesHitPoints);
+      updates.usesHitPoints = input.usesHitPoints;
+    }
+    if (!Object.keys(updates).length) {
+      throw new RpgServiceError(400, "Informe ao menos um campo válido para atualizar o personagem.");
+    }
+    return this.repository.update("characters", characterId, updates);
+  }
+
+  validateHitPoints(hitPoints) {
+    if (!Number.isInteger(hitPoints) || hitPoints < 0) {
+      throw new RpgServiceError(400, "Os pontos de vida devem ser um inteiro igual ou maior que zero.");
+    }
+  }
+
+  validateUsesHitPoints(usesHitPoints) {
+    if (typeof usesHitPoints !== "boolean") {
+      throw new RpgServiceError(400, "A opção de utilizar pontos de vida deve ser booleana.");
+    }
   }
 
   async delete(actor, characterId) {
