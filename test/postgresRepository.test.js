@@ -110,6 +110,34 @@ test("reconhece a tabela de valores dos combatentes", async () => {
   }]);
 });
 
+test("reconhece NPCs e valores de campos de NPC no PostgreSQL", async () => {
+  const npc = mapPostgresRecord("npcs", {
+    id: "npc-id",
+    campaign_id: "campaign-id",
+    name: "Lobo",
+    is_enemy: false,
+    created_at: "2026-01-01T00:00:00.000Z",
+  });
+  assert.deepEqual(npc, {
+    id: "npc-id",
+    campaignId: "campaign-id",
+    name: "Lobo",
+    isEnemy: false,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  });
+  assert.deepEqual(mapPostgresRecord("npc_field_values", {
+    id: "value-id",
+    npc_id: "npc-id",
+    field_id: "field-id",
+    value: "16",
+  }), {
+    id: "value-id",
+    npcId: "npc-id",
+    fieldId: "field-id",
+    value: "16",
+  });
+});
+
 test("mapeia dimensões do grid, coordenadas, ações e pontos de vida", () => {
   assert.deepEqual(mapPostgresRecord("combats", {
     id: "combat-id",

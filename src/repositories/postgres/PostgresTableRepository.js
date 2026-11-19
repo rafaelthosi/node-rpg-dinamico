@@ -88,24 +88,24 @@ export const POSTGRES_TABLES = {
       value: "value",
       updatedAt: "updated_at",
     },
-    npcs: {
-      sqlName: "npcs",
-      columns: {
-        id: "id",
-        campaignId: "campaign_id",
-        name: "name",
-        isEnemy: "is_enemy",
-        createdAt: "created_at",
-      },
+  },
+  npcs: {
+    sqlName: "npcs",
+    columns: {
+      id: "id",
+      campaignId: "campaign_id",
+      name: "name",
+      isEnemy: "is_enemy",
+      createdAt: "created_at",
     },
-    npc_field_values: {
-      sqlName: "npc_field_values",
-      columns: {
-        id: "id",
-        npcId: "npc_id",
-        fieldId: "field_id",
-        value: "value",
-      },
+  },
+  npc_field_values: {
+    sqlName: "npc_field_values",
+    columns: {
+      id: "id",
+      npcId: "npc_id",
+      fieldId: "field_id",
+      value: "value",
     },
   },
   combats: {
