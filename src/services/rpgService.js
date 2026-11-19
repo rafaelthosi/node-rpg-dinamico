@@ -1,6 +1,7 @@
 import { CampaignMemberService } from "./campaignMemberService.js";
 import { CampaignService } from "./campaignService.js";
 import { CharacterService } from "./characterService.js";
+import { NpcService } from "./npcService.js";
 import { CombatService } from "./combatService.js";
 import { AttackService } from "./attackService.js";
 import { FieldService } from "./fieldService.js";
@@ -17,6 +18,7 @@ export class RpgService {
     this.sections = new SectionService({ repository });
     this.fields = new FieldService({ repository });
     this.characters = new CharacterService({ repository });
+    this.npcs = new NpcService({ repository });
     this.combats = new CombatService({ repository });
     this.attacks = new AttackService({ repository });
   }

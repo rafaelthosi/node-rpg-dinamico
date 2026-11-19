@@ -75,6 +75,35 @@ test("persiste entidades do RPG e aplica escopo de personagem/campanha", async (
     name: "privateToPlayers", label: "Notas do jogador", type: "TEXT", required: false,
     editableBy: "PLAYER", visibleTo: "PLAYER",
   });
+  const npc = await service.npcs.create(gmActor, campaign.id, {
+    name: "Lobo guardião",
+    isEnemy: false,
+    fieldValues: [{ fieldId: field.id, value: "16" }],
+  });
+  assert.equal(npc.name, "Lobo guardião");
+  assert.equal(npc.isEnemy, false);
+  assert.deepEqual(npc.fieldValues.map(({ fieldId, value }) => ({ fieldId, value })), [
+    { fieldId: field.id, value: "16" },
+  ]);
+  await assert.rejects(
+    service.npcs.create(playerActor, campaign.id, {
+      name: "NPC não autorizado", isEnemy: true, fieldValues: [],
+    }),
+    { status: 403 },
+  );
+  await assert.rejects(
+    service.npcs.create(gmActor, campaign.id, {
+      name: "Sem campo obrigatório", isEnemy: true, fieldValues: [],
+    }),
+    { status: 400 },
+  );
+  const updatedNpc = await service.npcs.update(gmActor, npc.id, {
+    name: "Lobo aliado",
+    isEnemy: false,
+    fieldValues: [{ fieldId: field.id, value: "18" }],
+  });
+  assert.equal(updatedNpc.name, "Lobo aliado");
+  assert.equal(updatedNpc.fieldValues[0].value, "18");
   const character = await service.createCharacter(playerActor, campaign.id, {
     name: "Thorin", hitPoints: 18, usesHitPoints: true,
   });
@@ -117,6 +146,21 @@ test("persiste entidades do RPG e aplica escopo de personagem/campanha", async (
   assert.equal(characterCombatant.actionsPerTurn, 3);
   assert.equal(goblinCombatant.position, "b12");
   assert.equal(characterCombatant.isMine, false);
+  const selectedNpcCombat = await service.combats.create(gmActor, campaign.id, {
+    name: "Encontro com aliado",
+    participants: [{
+      name: updatedNpc.name,
+      isEnemy: updatedNpc.isEnemy,
+      initiative: 8,
+      actionsPerTurn: 1,
+      position: "a1",
+      fieldValues: updatedNpc.fieldValues.map(({ fieldId, value }) => ({ fieldId, value })),
+    }],
+  });
+  assert.equal(selectedNpcCombat.combatants[0].name, "Lobo aliado");
+  assert.deepEqual(selectedNpcCombat.combatants[0].sharedFields, [
+    { fieldId: field.id, label: "Nome", value: "18" },
+  ]);
   await assert.rejects(
     service.combats.setGridSize(gmActor, combat.id, { gridRows: 11, gridColumns: 10 }),
     { status: 400 },
@@ -317,6 +361,12 @@ test("persiste entidades do RPG e aplica escopo de personagem/campanha", async (
   const reloaded = new CsvRpgRepository(directory, path.join(directory, "missing.xlsx"));
   await reloaded.initialize();
   assert.equal((await reloaded.findById("characters", character.id)).name, "Thorin");
+  assert.equal((await reloaded.findById("npcs", npc.id)).name, "Lobo aliado");
+  assert.equal((await reloaded.findById("npcs", npc.id)).isEnemy, false);
+  const reloadedNpcValues = await reloaded.list("npc_field_values", (value) => value.npcId === npc.id);
+  assert.deepEqual(reloadedNpcValues.map(({ fieldId, value }) => ({ fieldId, value })), [
+    { fieldId: field.id, value: "18" },
+  ]);
   const reloadedValues = await reloaded.list("field_values", (value) => (
     value.characterId === character.id
   ));

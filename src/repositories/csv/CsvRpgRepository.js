@@ -20,6 +20,8 @@ export class CsvRpgRepository {
     this.fieldOptions = new CsvFieldOptionRepository(this.store);
     this.characters = new CsvCharacterRepository(this.store);
     this.fieldValues = new CsvFieldValueRepository(this.store);
+    this.npcs = new CsvTableRepository(this.store, "npcs");
+    this.npcFieldValues = new CsvTableRepository(this.store, "npc_field_values");
     this.combats = new CsvTableRepository(this.store, "combats");
     this.combatants = new CsvTableRepository(this.store, "combatants");
     this.combatActions = new CsvTableRepository(this.store, "combat_actions");
@@ -35,6 +37,8 @@ export class CsvRpgRepository {
       ["field_options", this.fieldOptions],
       ["characters", this.characters],
       ["field_values", this.fieldValues],
+      ["npcs", this.npcs],
+      ["npc_field_values", this.npcFieldValues],
       ["combats", this.combats],
       ["combatants", this.combatants],
       ["combat_actions", this.combatActions],

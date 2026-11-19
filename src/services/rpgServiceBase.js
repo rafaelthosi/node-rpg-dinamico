@@ -15,6 +15,8 @@ export class RpgServiceBase {
       fieldOptions: repository.fieldOptions ?? repository,
       characters: repository.characters ?? repository,
       fieldValues: repository.fieldValues ?? repository,
+      npcs: repository.npcs ?? repository,
+      npcFieldValues: repository.npcFieldValues ?? repository,
       combats: repository.combats ?? repository,
       combatants: repository.combatants ?? repository,
       combatActions: repository.combatActions ?? repository,
@@ -88,6 +90,8 @@ export class RpgServiceBase {
       field_options: this.repositories.fieldOptions,
       characters: this.repositories.characters,
       field_values: this.repositories.fieldValues,
+      npcs: this.repositories.npcs,
+      npc_field_values: this.repositories.npcFieldValues,
       combats: this.repositories.combats,
       combatants: this.repositories.combatants,
       combat_actions: this.repositories.combatActions,
@@ -213,6 +217,7 @@ export class RpgServiceBase {
     await this.repositories.fieldValues.deleteWhere((value) => ids.has(value.fieldId));
     await this.repositories.fieldOptions.deleteWhere((option) => ids.has(option.fieldId));
     await this.repositories.combatantFieldValues.deleteWhere((value) => ids.has(value.fieldId));
+    await this.repositories.npcFieldValues.deleteWhere((value) => ids.has(value.fieldId));
     await this.repositories.fields.deleteWhere((field) => ids.has(field.id));
   }
 

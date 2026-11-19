@@ -38,6 +38,13 @@ const TABLES = {
     ["id", "id"], ["characterId", "character_id"], ["fieldId", "field_id"],
     ["value", "value"], ["updatedAt", "updated_at"],
   ],
+  npcs: [
+    ["id", "id"], ["campaignId", "campaign_id"], ["name", "name"],
+    ["isEnemy", "is_enemy"], ["createdAt", "created_at"],
+  ],
+  npc_field_values: [
+    ["id", "id"], ["npcId", "npc_id"], ["fieldId", "field_id"], ["value", "value"],
+  ],
   combats: [
     ["id", "id"], ["campaignId", "campaign_id"], ["name", "name"],
     ["currentRound", "current_round"], ["currentTurnIndex", "current_turn_index"],

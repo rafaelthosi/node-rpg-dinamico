@@ -70,6 +70,8 @@ export class CampaignService extends RpgServiceBase {
       character.campaignId === campaignId
     ));
     const characterIds = new Set(characters.map(({ id }) => id));
+    const npcs = await this.repository.list("npcs", (npc) => npc.campaignId === campaignId);
+    const npcIds = new Set(npcs.map(({ id }) => id));
     const combats = await this.repository.list("combats", (combat) => combat.campaignId === campaignId);
     const combatIds = new Set(combats.map(({ id }) => id));
     const combatants = await this.repository.list("combatants", (combatant) => (
@@ -93,10 +95,14 @@ export class CampaignService extends RpgServiceBase {
     await this.repository.deleteWhere("field_values", (value) => (
       characterIds.has(value.characterId) || fieldIds.has(value.fieldId)
     ));
+    await this.repository.deleteWhere("npc_field_values", (value) => (
+      npcIds.has(value.npcId) || fieldIds.has(value.fieldId)
+    ));
     await this.repository.deleteWhere("field_options", (option) => fieldIds.has(option.fieldId));
     await this.repository.deleteWhere("fields", (field) => sectionIds.has(field.sectionId));
     await this.repository.deleteWhere("sections", (section) => section.campaignId === campaignId);
     await this.repository.deleteWhere("characters", (character) => character.campaignId === campaignId);
+    await this.repository.deleteWhere("npcs", (npc) => npc.campaignId === campaignId);
     await this.repository.deleteWhere("campaign_members", (member) => member.campaignId === campaignId);
     await this.repository.delete("campaigns", campaignId);
     return { deleted: true };

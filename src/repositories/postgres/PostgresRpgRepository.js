@@ -24,6 +24,8 @@ export class PostgresRpgRepository {
     this.fieldOptions = new PostgresFieldOptionRepository(this.pool);
     this.characters = new PostgresCharacterRepository(this.pool);
     this.fieldValues = new PostgresFieldValueRepository(this.pool);
+    this.npcs = new PostgresTableRepository(this.pool, "npcs");
+    this.npcFieldValues = new PostgresTableRepository(this.pool, "npc_field_values");
     this.combats = new PostgresTableRepository(this.pool, "combats");
     this.combatants = new PostgresTableRepository(this.pool, "combatants");
     this.combatActions = new PostgresTableRepository(this.pool, "combat_actions");
@@ -39,6 +41,8 @@ export class PostgresRpgRepository {
       ["field_options", this.fieldOptions],
       ["characters", this.characters],
       ["field_values", this.fieldValues],
+      ["npcs", this.npcs],
+      ["npc_field_values", this.npcFieldValues],
       ["combats", this.combats],
       ["combatants", this.combatants],
       ["combat_actions", this.combatActions],
@@ -61,6 +65,7 @@ export class PostgresRpgRepository {
         "001_create_database_schema.sql",
         "002_add_combats_attacks.sql",
         "003_add_combat_grid_and_action_details.sql",
+        "004_add_npcs.sql",
       ]) {
         const applied = await client.query(
           "SELECT 1 FROM rpg_schema_migrations WHERE version = $1",
