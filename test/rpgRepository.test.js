@@ -130,6 +130,21 @@ test("persiste entidades do RPG e aplica escopo de personagem/campanha", async (
     observation: "",
     actionsConsumed: 2,
   });
+  const gmAttack = await service.attacks.create(gmActor, character.id, {
+    name: "Ataque do mestre",
+    damage: "1d6",
+    actionsConsumed: 1,
+  });
+  assert.equal(gmAttack.characterId, character.id);
+  assert.equal((await service.attacks.list(gmActor, character.id)).some(
+    (item) => item.id === gmAttack.id,
+  ), true);
+  const updatedGmAttack = await service.attacks.update(gmActor, gmAttack.id, { name: "Ataque editado" });
+  assert.equal(updatedGmAttack.name, "Ataque editado");
+  await service.attacks.delete(gmActor, gmAttack.id);
+  assert.equal((await service.attacks.list(gmActor, character.id)).some(
+    (item) => item.id === gmAttack.id,
+  ), false);
   await assert.rejects(
     service.combats.addAction(playerActor, combat.id, {
       combatantId: characterCombatant.id,
